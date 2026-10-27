@@ -1,0 +1,15 @@
+{
+  "_hinweis": "DIESE DATEI IST NUR EIN BEISPIEL! Die echte 'token.json' wird automatisch erstellt, sobald du dich das erste Mal über http://localhost:8000/api/auth/login mit deinem Google-Konto anmeldest.",
+  "token": "ya29.a0BeispielAccessTokenVonGoogle...",
+  "refresh_token": "1//09BeispielRefreshTokenVonGoogle...",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "client_id": "123456789012-beispielclientid.apps.googleusercontent.com",
+  "client_secret": "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345",
+  "scopes": [
+    "https://www.googleapis.com/auth/calendar.events"
+  ],
+  "universe_domain": "googleapis.com",
+  "account": "",
+  "expiry": "2026-10-28T00:00:00.000000Z"
+}
+
