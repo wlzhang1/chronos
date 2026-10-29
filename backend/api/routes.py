@@ -8,11 +8,14 @@ from backend.core.config import settings
 from backend.models.schemas import (
     CalendarSyncRequest,
     CalendarSyncResponse,
+    QuickScheduleRequest,
+    QuickScheduleResponse,
     ScheduleRequest,
     ScheduleResponse,
 )
 from backend.services.ai_scheduler import parse_schedule_intent
 from backend.services.calendar_service import (
+    enrich_events_with_conflict_detection,
     exchange_code_for_token,
     get_authorization_url,
     get_valid_credentials,
@@ -46,6 +49,8 @@ async def parse_schedule(request: ScheduleRequest) -> ScheduleResponse:
 
     try:
         events = parse_schedule_intent(text=request.text, current_time=reference_time)
+        # Zwei-Wege-Sync: Bestehende Termine prüfen und Konflikte / Doppelbuchungen markieren
+        events = enrich_events_with_conflict_detection(events=events, calendar_id="primary")
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -137,5 +142,80 @@ async def sync_calendar(request: CalendarSyncRequest) -> CalendarSyncResponse:
         ) from exc
 
     return CalendarSyncResponse(synced_count=len(synced), synced_events=synced)
+
+
+@router.post("/quick-schedule", response_model=QuickScheduleResponse, tags=["scheduler"])
+async def quick_schedule(request: QuickScheduleRequest) -> QuickScheduleResponse:
+    """Endpunkt für den globalen Shortcut: Analysiert den Text und synchronisiert ihn direkt in Google Calendar."""
+    creds = get_valid_credentials()
+    if not creds:
+        return QuickScheduleResponse(
+            success=False,
+            message="Google Calendar ist nicht verbunden. Bitte zuerst in Chronos anmelden.",
+            events=[],
+        )
+
+    tz = _resolve_timezone(request.timezone)
+    reference_time = datetime.now(tz)
+
+    try:
+        events = parse_schedule_intent(text=request.text, current_time=reference_time)
+        events = enrich_events_with_conflict_detection(events=events, calendar_id="primary")
+    except Exception as exc:
+        return QuickScheduleResponse(
+            success=False,
+            message=f"Fehler bei der KI-Analyse: {exc}",
+            events=[],
+        )
+
+    if not events:
+        return QuickScheduleResponse(
+            success=False,
+            message="Kein Termin im Text erkannt.",
+            events=[],
+        )
+
+    conflicting_events = [ev for ev in events if ev.has_conflict]
+    if conflicting_events and not request.force_sync and not request.use_suggested_slots:
+        first_warning = conflicting_events[0].conflict_warning or "Zeitkonflikt mit bestehendem Termin erkannt."
+        return QuickScheduleResponse(
+            success=False,
+            has_conflict=True,
+            message=first_warning,
+            events=[],
+            parsed_events=events,
+        )
+
+    if request.use_suggested_slots:
+        for ev in events:
+            if ev.has_conflict and ev.suggested_start_time and ev.suggested_end_time:
+                ev.start_time = ev.suggested_start_time
+                ev.end_time = ev.suggested_end_time
+                ev.has_conflict = False
+
+    try:
+        synced = sync_events_to_calendar(events=events, calendar_id="primary")
+    except Exception as exc:
+        return QuickScheduleResponse(
+            success=False,
+            message=f"Fehler beim Kalender-Sync: {exc}",
+            events=[],
+        )
+
+    count = len(synced)
+    first_title = synced[0].title
+    msg = (
+        f"1 Termin eingetragen: '{first_title}'"
+        if count == 1
+        else f"{count} Termine erfolgreich eingetragen"
+    )
+    return QuickScheduleResponse(
+        success=True,
+        has_conflict=False,
+        message=msg,
+        events=synced,
+        parsed_events=events,
+    )
+
 
 

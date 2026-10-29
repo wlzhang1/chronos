@@ -18,6 +18,12 @@ import {
   Users,
   Brain,
   Tag,
+  Bell,
+  BellOff,
+  MapPin,
+  AlertTriangle,
+  ArrowRight,
+  Check,
 } from "lucide-react";
 import {
   API_BASE_URL,
@@ -67,7 +73,7 @@ const CATEGORY_CONFIG: Record<
 
 const EXAMPLE_PROMPTS = [
   "Morgen von 9 bis 10 Uhr Daily Standup, danach 2 Stunden Deep Work an Chronos und um 18 Uhr 45 Minuten Joggen im Park",
-  "Heute um 14:30 Uhr kurzes Alignment mit Sarah (30 Min) und um 16 Uhr Zahnarzttermin für eine Stunde",
+  "Heute um 14:30 Uhr kurzes Alignment mit Sarah (30 Min) und um 16 Uhr Zahnarzttermin für eine Stunde (erinnere mich 30 Min vorher)",
   "Übermorgen 10-12 Uhr Architektur-Workshop, 12:30 Uhr Mittagessen im Team, 15 Uhr Code-Reviews",
 ];
 
@@ -109,6 +115,15 @@ export default function ChronosPage() {
 
   useEffect(() => {
     checkAuthStatus().then(setIsAuthenticated);
+
+    // Unterstützt Öffnen über den globalen Shortcut mit vorab ausgefülltem Text: ?q=...
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const query = params.get("q") || params.get("text");
+      if (query && query.trim()) {
+        setInputText(query.trim());
+      }
+    }
   }, []);
 
   async function handleParse(e?: React.FormEvent) {
@@ -159,7 +174,7 @@ export default function ChronosPage() {
   function handleUpdateEvent(
     index: number,
     field: keyof ParsedEvent,
-    value: string
+    value: string | number | null
   ) {
     setEvents((prev) =>
       prev.map((ev, i) => (i === index ? { ...ev, [field]: value } : ev))
@@ -168,6 +183,41 @@ export default function ChronosPage() {
 
   function handleRemoveEvent(index: number) {
     setEvents((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleAcceptSuggestion(index: number) {
+    setEvents((prev) =>
+      prev.map((ev, i) => {
+        if (i !== index || !ev.suggested_start_time || !ev.suggested_end_time) {
+          return ev;
+        }
+        return {
+          ...ev,
+          start_time: ev.suggested_start_time,
+          end_time: ev.suggested_end_time,
+          has_conflict: false,
+          conflict_with: null,
+          conflict_warning: null,
+          suggested_start_time: null,
+          suggested_end_time: null,
+          suggested_time_label: null,
+        };
+      })
+    );
+  }
+
+  function handleDismissConflict(index: number) {
+    setEvents((prev) =>
+      prev.map((ev, i) =>
+        i === index
+          ? {
+              ...ev,
+              has_conflict: false,
+              conflict_warning: null,
+            }
+          : ev
+      )
+    );
   }
 
   return (
@@ -364,8 +414,55 @@ export default function ChronosPage() {
                 return (
                   <div
                     key={index}
-                    className="group rounded-2xl bg-zinc-900/70 border border-zinc-800/90 hover:border-zinc-700 p-4 transition"
+                    className={`group rounded-2xl bg-zinc-900/70 border p-4 transition ${
+                      ev.has_conflict
+                        ? "border-amber-500/60 shadow-lg shadow-amber-500/5"
+                        : "border-zinc-800/90 hover:border-zinc-700"
+                    }`}
                   >
+                    {ev.has_conflict && (
+                      <div className="mb-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 p-3.5 text-xs text-amber-200">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-start gap-2.5">
+                            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                            <div className="space-y-0.5">
+                              <p className="font-semibold text-amber-300">
+                                Doppelbuchungs-Warnung
+                              </p>
+                              <p className="text-amber-200/90 leading-relaxed">
+                                {ev.conflict_warning ||
+                                  `Überschneidung mit ${ev.conflict_with || "einem bestehenden Termin"}.`}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            {ev.suggested_start_time &&
+                              ev.suggested_end_time && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAcceptSuggestion(index)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 px-3 py-1.5 text-xs font-semibold text-zinc-950 shadow-sm transition"
+                                >
+                                  <Clock className="h-3.5 w-3.5" />
+                                  Auf {ev.suggested_time_label || "freien Slot"}{" "}
+                                  legen
+                                  <ArrowRight className="h-3 w-3" />
+                                </button>
+                              )}
+                            <button
+                              type="button"
+                              onClick={() => handleDismissConflict(index)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-zinc-800/90 hover:bg-zinc-800 border border-zinc-700 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition"
+                            >
+                              <Check className="h-3 w-3 text-zinc-400" />
+                              Trotzdem behalten
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex-1 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
@@ -396,6 +493,65 @@ export default function ChronosPage() {
                           <span className="text-xs text-zinc-400 font-medium">
                             {dateStr} · {timeRangeStr}
                           </span>
+
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
+                              ev.reminder_minutes
+                                ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30"
+                                : "bg-zinc-800/70 text-zinc-500 border-zinc-700/60"
+                            }`}
+                          >
+                            {ev.reminder_minutes ? (
+                              <Bell className="w-3.5 h-3.5 text-indigo-400" />
+                            ) : (
+                              <BellOff className="w-3.5 h-3.5 text-zinc-500" />
+                            )}
+                            <select
+                              value={ev.reminder_minutes ?? "none"}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                handleUpdateEvent(
+                                  index,
+                                  "reminder_minutes",
+                                  val === "none" ? null : parseInt(val, 10)
+                                );
+                              }}
+                              className="bg-transparent focus:outline-none cursor-pointer"
+                            >
+                              <option value="none" className="bg-zinc-900 text-zinc-400">
+                                Keine Erinnerung
+                              </option>
+                              {ev.reminder_minutes &&
+                                ![5, 10, 15, 30, 60, 1440].includes(
+                                  ev.reminder_minutes
+                                ) && (
+                                  <option
+                                    value={ev.reminder_minutes}
+                                    className="bg-zinc-900 text-zinc-100"
+                                  >
+                                    {ev.reminder_minutes} Min vorher
+                                  </option>
+                                )}
+                              <option value="5" className="bg-zinc-900 text-zinc-100">
+                                5 Min vorher
+                              </option>
+                              <option value="10" className="bg-zinc-900 text-zinc-100">
+                                10 Min vorher
+                              </option>
+                              <option value="15" className="bg-zinc-900 text-zinc-100">
+                                15 Min vorher
+                              </option>
+                              <option value="30" className="bg-zinc-900 text-zinc-100">
+                                30 Min vorher
+                              </option>
+                              <option value="60" className="bg-zinc-900 text-zinc-100">
+                                1 Std vorher
+                              </option>
+                              <option value="1440" className="bg-zinc-900 text-zinc-100">
+                                1 Tag vorher
+                              </option>
+                            </select>
+                          </span>
                         </div>
 
                         <input
@@ -406,6 +562,23 @@ export default function ChronosPage() {
                           }
                           className="w-full bg-transparent text-base font-semibold text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 rounded px-1 -mx-1"
                         />
+
+                        <div className="flex items-center gap-1.5 text-zinc-400">
+                          <MapPin className="w-3.5 h-3.5 shrink-0 text-indigo-400/80" />
+                          <input
+                            type="text"
+                            value={ev.location || ""}
+                            placeholder="Ort hinzufügen (z. B. Paulaner am Nockherberg)..."
+                            onChange={(e) =>
+                              handleUpdateEvent(
+                                index,
+                                "location",
+                                e.target.value
+                              )
+                            }
+                            className="w-full bg-transparent text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/40 rounded px-1 -mx-1"
+                          />
+                        </div>
 
                         <input
                           type="text"

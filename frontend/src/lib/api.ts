@@ -11,7 +11,15 @@ export interface ParsedEvent {
   start_time: string;
   end_time: string;
   category: EventCategory;
+  location?: string | null;
   description?: string | null;
+  reminder_minutes?: number | null;
+  has_conflict?: boolean;
+  conflict_with?: string | null;
+  conflict_warning?: string | null;
+  suggested_start_time?: string | null;
+  suggested_end_time?: string | null;
+  suggested_time_label?: string | null;
 }
 
 export interface ScheduleResponse {

@@ -14,8 +14,10 @@ Mit **Chronos** musst du Termine nicht mehr mühsam einzeln im Kalender zusammen
 
 **Chronos erledigt den Rest vollautomatisch:**
 1. 🧠 **KI-Analyse (Google Gemini):** Erkennt alle Termine, berechnet das genaue Datum sowie Start- und Endzeiten und weist passende Kategorien (*Work*, *Meeting*, *Deep Work*, *Health*, *Personal*, *Sonstiges*) zu.
-2. ✏️ **Vorschau & Anpassung:** Zeigt dir alle erkannten Termine übersichtlich an. Du kannst Titel, Kategorie oder Notizen vorab noch mit einem Klick anpassen oder Termine löschen.
-3. 📅 **1-Klick Google Calendar Sync:** Trägt alle Termine inklusive passender Kalenderfarben direkt in deinen echten Google Kalender ein.
+2. 📍 **Orte & Intelligente Erinnerungen:** Genannte Orte (z. B. *„im Paulaner am Nockherberg“*) landen direkt im Google-Maps-Ortsfeld des Kalenders. Benachrichtigungen bleiben standardmäßig aus und werden nur aktiviert, wenn du explizit darum bittest (z. B. *„erinnere mich 15 Min vorher“*).
+3. ⚡ **Globaler Spotlight-Schnellzugriff (`Alt + C`):** Überall in Windows per Tastenkürzel einblendbar (mit sanfter Slide-&-Fade-Animation, frei verschiebbar inkl. Positionsspeicher) – tippen, `Enter` drücken, fertig!
+4. ✏️ **Vorschau & Anpassung:** In der Haupt-App kannst du Titel, Kategorie, Ort, Erinnerung oder Notizen vorab mit einem Klick anpassen oder Termine löschen.
+5. 📅 **1-Klick Google Calendar Sync:** Trägt alle Termine inklusive passender Kalenderfarben direkt in deinen echten Google Kalender ein.
 
 > **💰 Kostenhinweis:** Dieses Projekt nutzt ausschließlich **100 % kostenlose Tarife (Free Tier)** von Google AI Studio und der Google Calendar API. Es wird **keine Kreditkarte** und **kein Abrechnungskonto** benötigt!
 
@@ -143,8 +145,13 @@ Klicke im Projektordner einfach doppelt auf **`Chronos.exe`** (oder `start-chron
 * Chronos startet das Python-Backend und das Next.js-Frontend vollautomatisch im Hintergrund (ohne störende schwarze Terminal-Fenster).
 * Die App öffnet sich als eigenes schlankes Desktop-Fenster.
 * Unten rechts in der Windows-Taskleiste (neben der Uhr im System-Tray) erscheint das **Chronos-Icon**:
-  * **Doppelklick auf das Icon:** Öffnet sofort wieder das Chronos-Fenster.
-  * **Rechtsklick auf das Icon -> „Chronos beenden“:** Stoppt die Hintergrund-Server sauber.
+  * **⚡ Globaler Shortcut (`Alt + C` oder `Strg + Umschalt + C`):** Drücke diesen Shortcut überall unter Windows, damit die schwebende Schnellzugriff-Leiste (Spotlight/Raycast-Style) sanft mit einer Slide-&-Fade-Animation einblendet:
+    * **`Enter`:** Analysiert deine Eingabe und trägt den Termin direkt im Hintergrund in den Google Kalender ein.
+    * **`Tab`:** Übernimmt deine Eingabe direkt in das große Chronos-Hauptfenster zur detaillierten Vorschau.
+    * **`Esc` (oder Klick daneben):** Blendet die Leiste sanft wieder aus.
+    * **Frei bewegbar (Drag & Move):** Halte die linke Maustaste auf dem Rahmen, Icon oder der Statusleiste gedrückt, um das Fenster frei zu verschieben – Chronos merkt sich deine Wunschposition automatisch!
+  * **Doppelklick auf das Tray-Icon:** Öffnet sofort wieder das Chronos-Hauptfenster.
+  * **Rechtsklick auf das Tray-Icon:** Bietet schnellen Zugriff auf die Leiste, **„Schnellzugriff-Position zentrieren“** (zum Zurücksetzen der Fensterposition), die API-Docs sowie **„Chronos beenden (Server stoppen)“**.
 * *Tipp:* Erstelle dir per Rechtsklick auf `Chronos.exe` -> *Senden an -> Desktop (Verknüpfung erstellen)* eine Verknüpfung auf deinem Desktop!
 
 #### Variante B: Manuell im Terminal starten (für Entwickler / Mac / Linux)
@@ -175,9 +182,9 @@ Starte zwei Terminals im Projektordner:
 ```text
 chronos/
 ├── backend/
-│   ├── api/routes.py             # FastAPI-Endpunkte (/api/parse, /api/auth/*, /api/calendar/sync)
+│   ├── api/routes.py             # FastAPI-Endpunkte (/api/parse, /api/quick-schedule, /api/auth/*, /api/calendar/sync)
 │   ├── core/config.py            # Lädt die Schlüssel aus der .env-Datei
-│   ├── models/schemas.py         # Strikte Pydantic-Datenmodelle für KI & Kalender
+│   ├── models/schemas.py         # Strikte Pydantic-Datenmodelle für KI & Kalender (inkl. Ort & Erinnerungen)
 │   ├── services/ai_scheduler.py  # Gemini KI-Integration (Structured JSON Output)
 │   ├── services/calendar_service.py # Google Calendar OAuth2 & Event-Sync
 │   └── main.py                   # FastAPI Hauptserver inkl. CORS
@@ -186,10 +193,10 @@ chronos/
 │   ├── src/lib/api.ts            # Kommunikation zwischen Frontend und Backend
 │   └── .env.local.example        # Optionale Vorlage für die Backend-URL
 ├── launcher/
-│   └── ChronosLauncher.cs        # Quellcode für die Windows-Executable (Chronos.exe)
+│   └── ChronosLauncher.cs        # Quellcode für die Windows-Executable & Spotlight-Leiste (Chronos.exe)
 ├── .env.example                  # Vorlage für deine API-Schlüssel (zu .env kopieren!)
 ├── token.json.example            # Beispiel-Struktur des automatisch erzeugten OAuth-Tokens
-├── Chronos.exe                   # 1-Klick Windows-Starter inkl. System-Tray-Steuerung
+├── Chronos.exe                   # 1-Klick Windows-Starter inkl. System-Tray & Globalem Shortcut (Alt + C)
 ├── requirements.txt              # Benötigte Python-Bibliotheken
 └── README.md                     # Diese Anleitung
 ```
@@ -204,6 +211,11 @@ chronos/
   * **Lösung:** Prüfe in der Google Cloud Console bei deiner OAuth-Client-ID, ob unter *Autorisierte Weiterleitungs-URIs* exakt `http://localhost:8000/api/auth/callback` (ohne Schrägstrich am Ende!) eingetragen ist.
 * **Fehler beim Kalender-Sync: „403 Google Calendar API has not been used in project...“**
   * **Lösung:** Klicke auf den Link in der Fehlermeldung (oder gehe in die Google Cloud Console) und klicke bei der **Google Calendar API** einmalig auf **Aktivieren (Enable)**.
+* **Wie kann ich `Chronos.exe` nach Änderungen an `launcher/ChronosLauncher.cs` neu kompilieren?**
+  * Windows bringt den benötigten C#-Compiler bereits ab Werk mit. Führe in PowerShell im Projektordner einfach diesen Befehl aus (vorher laufendes Chronos über das Tray-Icon beenden):
+    ```powershell
+    & "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /target:winexe /out:Chronos.exe /win32icon:chronos.ico /r:System.Windows.Forms.dll,System.Drawing.dll,System.Web.Extensions.dll launcher\ChronosLauncher.cs
+    ```
 * **Meine geheimen Schlüssel auf GitHub schützen?**
   * Die Datei `.gitignore` ist bereits so eingestellt, dass deine echte `.env` und `token.json` **niemals** von Git erfasst oder auf GitHub hochgeladen werden. Nur die harmlosen `.example`-Dateien werden hochgeladen.
 

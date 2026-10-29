@@ -2,8 +2,43 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 
+from typing import Optional
+from pydantic import BaseModel, Field
+
 from backend.core.config import settings
-from backend.models.schemas import ParsedEvent, ParsedEventList
+from backend.models.schemas import EventCategory, ExistingCalendarEvent, ParsedEvent, ParsedEventList
+
+
+class AIExtractedEvent(BaseModel):
+    title: str = Field(..., description="Kurzer, prägnanter Titel des Termins")
+    start_time: str = Field(
+        ...,
+        description="Startzeitpunkt im ISO-8601-Format (z. B. 2026-10-28T09:00:00+01:00)",
+    )
+    end_time: str = Field(
+        ...,
+        description="Endzeitpunkt im ISO-8601-Format (z. B. 2026-10-28T10:00:00+01:00)",
+    )
+    category: EventCategory = Field(
+        default=EventCategory.OTHER,
+        description="Kategorie des Ereignisses (work, personal, health, meeting, focus, other)",
+    )
+    location: Optional[str] = Field(
+        default=None,
+        description="Optionaler Ort, Treffpunkt oder Adresse des Termins",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Optionale Zusatzinformationen, Notizen oder Kontext zum Termin",
+    )
+    reminder_minutes: Optional[int] = Field(
+        default=None,
+        description="Erinnerungsvorlauf in Minuten vor dem Termin, falls explizit gewünscht. Standardmäßig null.",
+    )
+
+
+class AIExtractedEventList(BaseModel):
+    events: list[AIExtractedEvent] = Field(default_factory=list)
 
 SYSTEM_INSTRUCTION = """Du bist Chronos, ein präziser KI-Assistent für Zeitmanagement und Tagesplanung.
 Deine Aufgabe ist es, unstrukturierte Texteingaben in strukturierte Kalenderereignisse zu übersetzen.
@@ -13,7 +48,12 @@ Regeln:
 2. WICHTIG ZUR ZEITZONE: Wenn der Nutzer eine Uhrzeit nennt (z. B. "7:30 Uhr", "9 Uhr", "20:45 Uhr"), ist das IMMER die lokale Uhrzeit des Nutzers. Übernimm diese Uhrzeit 1:1 (z. B. `T07:30:00`, `T09:00:00`, `T20:45:00`) und hänge exakt denselben Zeitzonen-Offset an, den `current_time` besitzt (z. B. `+01:00` oder `+02:00`). Rechne die Zeiten NIEMALS in UTC (`Z` oder `+00:00`) um!
 3. Wenn keine explizite Dauer oder Endzeit genannt wird, wähle eine sinnvolle Standarddauer (z. B. 15 Minuten für kurze Reminder/Nachrichten, 30 Minuten für kurze Calls/Syncs, 60 Minuten für allgemeine Termine, 120 Minuten für ein Fußballspiel).
 4. Ordne jedem Termin die passendste Kategorie (`work`, `personal`, `health`, `meeting`, `focus`, `other`) zu.
-5. Extrahiere zusätzliche Details (Teilnehmer, Ort, Aufgaben) in das Feld `description`.
+5. ORT (`location`): Wenn im Text ein Ort, Restaurant, Gebäude, Raum, eine Stadt oder Adresse genannt wird (z. B. "Weihnachtsfeier im Paulaner am Nockherberg" -> `location`: "Paulaner am Nockherberg", "Joggen im Park" -> `location`: "Park"), trage diesen zwingend in das Feld `location` ein. Falls kein Ort genannt wird, lasse `location` auf `null`.
+6. BESCHREIBUNG (`description`): Extrahiere sonstige Zusatzdetails (Teilnehmer, Themen, Aufgaben, Notizen) in das Feld `description`.
+7. ERINNERUNGEN / BENACHRICHTIGUNGEN (`reminder_minutes`):
+   - STANDARDEINSTELLUNG: Setze `reminder_minutes` standardmäßig IMMER auf `null` (keine Benachrichtigung), auch wenn das Wort "Reminder" nur für einen kurzen Kalendereintrag genutzt wird.
+   - NUR wenn der Nutzer explizit sagt, dass er eine Benachrichtigung oder Erinnerung für den Termin haben möchte (z. B. "erinnere mich 15 Minuten vorher", "mit Erinnerung", "benachrichtige mich vorher", "erinnere mich daran"), setze `reminder_minutes` auf die gewünschte Minutenanzahl vor dem Termin (z. B. `15`, `30`, `60`).
+   - Falls der Nutzer explizit eine Erinnerung wünscht, aber keine genaue Zeitspanne nennt (z. B. "mit Erinnerung" oder "erinnere mich daran"), nutze `10` (10 Minuten vorher) als Standardwert.
 """
 
 
@@ -80,7 +120,7 @@ def parse_schedule_intent(text: str, current_time: datetime) -> list[ParsedEvent
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_INSTRUCTION,
                     response_mime_type="application/json",
-                    response_schema=ParsedEventList,
+                    response_schema=AIExtractedEventList,
                     temperature=0.1,
                 ),
             )
@@ -94,16 +134,26 @@ def parse_schedule_intent(text: str, current_time: datetime) -> list[ParsedEvent
     if response is None and last_error is not None:
         raise last_error
 
-    events: list[ParsedEvent] = []
-    if response.parsed is not None and isinstance(response.parsed, ParsedEventList):
-        events = response.parsed.events
+    extracted_events: list[AIExtractedEvent] = []
+    if response.parsed is not None and isinstance(response.parsed, AIExtractedEventList):
+        extracted_events = response.parsed.events
     elif response.text:
-        parsed_list = ParsedEventList.model_validate_json(response.text)
-        events = parsed_list.events
+        parsed_list = AIExtractedEventList.model_validate_json(response.text)
+        extracted_events = parsed_list.events
 
-    for ev in events:
-        ev.start_time = _enforce_local_tz(ev.start_time, current_time.tzinfo)
-        ev.end_time = _enforce_local_tz(ev.end_time, current_time.tzinfo)
+    events: list[ParsedEvent] = []
+    for ev in extracted_events:
+        events.append(
+            ParsedEvent(
+                title=ev.title,
+                start_time=_enforce_local_tz(ev.start_time, current_time.tzinfo),
+                end_time=_enforce_local_tz(ev.end_time, current_time.tzinfo),
+                category=ev.category,
+                location=ev.location,
+                description=ev.description,
+                reminder_minutes=ev.reminder_minutes,
+            )
+        )
 
     return events
 
